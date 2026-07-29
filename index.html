@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>beatmap timer</title>
+    <style>
+        :root {
+            color-scheme: dark;
+        }
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: black;
+            font-family: monospace;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            flex: 1 1 auto;
+            min-height: 0;
+            cursor: crosshair;
+        }
+
+        header {
+            display: flex;
+            gap: 1em;
+            background: transparent;
+            flex: 0 0 auto;
+            padding: .5em;
+            align-items: center;
+        }
+        input, button, select, input[type="file" i]::-webkit-file-upload-button {
+            font-family: inherit;
+            font-size: inherit;
+            text-align: center;
+        }
+        button:hover, input[type="file" i]::-webkit-file-upload-button:hover {
+            cursor: pointer;
+        }
+        .labeled {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .grow {
+            flex-grow: 1;
+        }
+
+        #helpdialog {
+            max-width: 50em;
+            border: 1px solid gray;
+        }
+        #helpdialog h2 {
+            margin-top: 0;
+        }
+        #helpdialog dl {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: .35em 1.5em;
+            margin: 0 0 1em;
+        }
+        #helpdialog dt {
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        #helpdialog dd {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <button onclick="this.nextElementSibling.click()">↑<br>load</button>
+            <input type="file" id="fileinput" accept="audio/*,.rtm" style="display: none">
+        <button id="export" disabled>↓<br>export</button>
+        <button id="undo" title="Undo (Ctrl+Z)" disabled>↺<br>undo</button>
+        <button id="redo" title="Redo (Ctrl+Shift+Z)" disabled>↻<br>redo</button>
+        <div class="labeled">
+            <select name="view" id="viewselect">
+                <option value="waveform">waveform</option>
+                <option value="spectrogram">spectrogram</option>
+            </select>
+            <label for="view">view</label>
+        </div>
+        <div class="grow"></div>
+        <button id="stop"><<</button>
+        <button id="playpause">▶</button>
+        <div class="labeled">
+            <input id="timestamp" type="text" value="0:00:000" size="8">
+            <label for="timestamp">time</label>
+        </div>
+        <div class="labeled">
+            <input type="checkbox" name="followplayhead" id="followplayhead">
+            <label for="followplayhead">follow playhead</label>
+        </div>
+        <div class="labeled">
+            <input type="range" id="metronomevolume" min="0" max="6" step="0.01" value="3">
+            <label for="metronomevolume">metronome vol.</label>
+        </div>
+        <div class="grow"></div>
+        <div class="labeled">
+            <input id="sectionbpm" type="number" min="1" step="any" style="width: 10ch" disabled>
+            <label for="sectionbpm">bpm</label>
+        </div>
+        <div class="labeled">
+            <div>
+                <input id="sectiontimesignum" type="number" min="1" step="1" style="width: 3ch" disabled><span>/</span><input id="sectiontimesigden" type="number" min="1" step="1" style="width: 3ch" disabled>
+            </div>
+            <label>t.s.</label>
+        </div>
+        <div class="labeled">
+            <input id="sectionbeatcount" type="number" min="0" max="512" step="1" style="width: 6ch" disabled>
+            <label for="sectionbeatcount">beats</label>
+        </div>
+        <button id="help" title="Help">?<br>help</button>
+    </header>
+
+    <canvas></canvas>
+
+    <dialog id="helpdialog" closedby="any">
+        <p>
+            <u>about this tool</u>
+        </p>
+        <p>
+            this tool was created to make it easier to time beatmaps for <a href="https://rhythmtyper.net/">Rhythm Typer</a>. you can load audio files or RTMs. when given an RTM, the tool will export that same RTM with the timing points and base bpm overriden. (base bpm will be set to the average bpm of all your timing points.)
+        </p>
+        <p>
+            <u>controls</u>
+        </p>
+        <dl>
+            <dt>space</dt><dd>play/pause</dd>
+            <dt>mouse wheel, middle-click + drag, trackpad pan</dt><dd>pan</dd>
+            <dt>ctrl/cmd+wheel, trackpad pinch</dt><dd>zoom</dd>
+            <dt>+, -</dt><dd>zoom in/out</dd>
+            <dt>0</dt><dd>see full view</dd>
+            <dt>delete</dt><dd>delete selected timing point</dd>
+            <dt>enter</dt><dd>edit offset of selected timing point</dd>
+            <dt>ctrl/cmd+Z</dt><dd>undo</dd>
+            <dt>ctrl/cmd+shift+Z or ctrl/cmd+Y</dt><dd>redo</dd>
+        </dl>
+    </dialog>
+
+</body>
+<script src="jszip.min.js"></script>
+<script src="WaveformAudio.js"></script>
+<script src="Editor.js"></script>
+<script src="script.js"></script>
+</html>
