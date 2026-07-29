@@ -96,7 +96,19 @@ class Editor {
     }
 
     get rulerHeightPx() {
-        return this.rulerHeight * window.devicePixelRatio;
+        return this.rulerHeight;
+    }
+
+    get dpr() {
+        return window.devicePixelRatio || 1;
+    }
+
+    get drawWidth() {
+        return this.canvas.width / this.dpr;
+    }
+
+    get drawHeight() {
+        return this.canvas.height / this.dpr;
     }
 
     set metronomeVolume(v) {
@@ -191,8 +203,8 @@ class Editor {
 
     resize() {
         const rect = this.canvas.getBoundingClientRect();
-        this.canvas.width = rect.width * window.devicePixelRatio;
-        this.canvas.height = rect.height * window.devicePixelRatio;
+        this.canvas.width = Math.round(rect.width * this.dpr);
+        this.canvas.height = Math.round(rect.height * this.dpr);
     }
 
     start() {
@@ -332,7 +344,7 @@ class Editor {
         if (!this.isReady) return null;
         const clamped = Math.max(0, Math.min(this.audio.duration, time));
 
-        const hitRadiusPx = this.handleHitRadius * window.devicePixelRatio;
+        const hitRadiusPx = this.handleHitRadius;
         const tooClose = this.timingPoints.some(
             (p) => Math.abs(this.timeToX(p.time) - this.timeToX(clamped)) < hitRadiusPx
         );
@@ -508,8 +520,8 @@ class Editor {
     clientToCanvasPx(clientX, clientY) {
         const rect = this.canvas.getBoundingClientRect();
         return {
-            x: (clientX - rect.left) * (this.canvas.width / rect.width),
-            y: (clientY - rect.top) * (this.canvas.height / rect.height),
+            x: (clientX - rect.left) * (this.drawWidth / rect.width),
+            y: (clientY - rect.top) * (this.drawHeight / rect.height),
         };
     }
 
@@ -527,7 +539,7 @@ class Editor {
         if (!this.isReady) return null;
         const { x } = this.clientToCanvasPx(clientX, clientY);
 
-        const radius = this.handleHitRadius * window.devicePixelRatio;
+        const radius = this.handleHitRadius;
         let best = null;
         let bestDist = Infinity;
         for (const point of this.timingPoints) {
@@ -565,23 +577,23 @@ class Editor {
     // canvas-space x (device px) to time (seconds)
     xToTime(x) {
         if (!this.isReady) return 0;
-        return this.viewStart + (x / this.canvas.width) * this.viewDuration;
+        return this.viewStart + (x / this.drawWidth) * this.viewDuration;
     }
 
     timeToX(t) {
         if (!this.isReady) return 0;
-        return ((t - this.viewStart) / this.viewDuration) * this.canvas.width;
+        return ((t - this.viewStart) / this.viewDuration) * this.drawWidth;
     }
 
     clientXToTime(x) {
         const rect = this.canvas.getBoundingClientRect();
         const xCss = x - rect.left;
-        return this.xToTime(xCss * (this.canvas.width / rect.width));
+        return this.xToTime(xCss * (this.drawWidth / rect.width));
     }
 
     timeToClientX(t) {
         const rect = this.canvas.getBoundingClientRect();
-        return rect.left + (this.timeToX(t) / this.canvas.width) * rect.width;
+        return rect.left + (this.timeToX(t) / this.drawWidth) * rect.width;
     }
 
     // export
@@ -1207,8 +1219,9 @@ class Editor {
     // rendering
 
     draw() {
-        const { ctx, canvas } = this;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const { ctx } = this;
+        ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+        ctx.clearRect(0, 0, this.drawWidth, this.drawHeight);
 
         // sampled once and reused
         const currentTime = this.audio.isLoaded ? this.audio.getCurrentTime() : 0;
@@ -1229,9 +1242,9 @@ class Editor {
             }
 
             const contentY = this.rulerHeightPx;
-            const contentHeight = canvas.height - contentY;
+            const contentHeight = this.drawHeight - contentY;
             const sliceOptions = {
-                width: canvas.width,
+                width: this.drawWidth,
                 height: contentHeight,
                 y: contentY,
                 startTime: this.viewStart,
@@ -1254,10 +1267,10 @@ class Editor {
             const playheadX = this.timeToX(currentTime);
             ctx.save();
             ctx.strokeStyle = this.playheadColor;
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.moveTo(playheadX, 0);
-            ctx.lineTo(playheadX, canvas.height);
+            ctx.lineTo(playheadX, this.drawHeight);
             ctx.stroke();
             ctx.restore();
         }
@@ -1268,7 +1281,7 @@ class Editor {
             ctx.strokeStyle = this.cursorColor;
             ctx.beginPath();
             ctx.moveTo(x, 0);
-            ctx.lineTo(x, canvas.height);
+            ctx.lineTo(x, this.drawHeight);
             ctx.stroke();
             ctx.restore();
         }
@@ -1281,7 +1294,7 @@ class Editor {
 
         ctx.save();
 
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2;
         for (const point of this.timingPoints) {
             if (point.time < this.viewStart || point.time > this.viewEnd) continue;
             ctx.strokeStyle = this.colorForPoint(point);
@@ -1312,22 +1325,20 @@ class Editor {
     }
 
     drawTicks(ctx) {
-        const { canvas } = this;
         const h = this.rulerHeightPx;
-        const dpr = window.devicePixelRatio;
 
         ctx.save();
 
         ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.fillRect(0, 0, canvas.width, h);
+        ctx.fillRect(0, 0, this.drawWidth, h);
         ctx.strokeStyle = "rgba(255,255,255,0.15)";
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(0, h);
-        ctx.lineTo(canvas.width, h);
+        ctx.lineTo(this.drawWidth, h);
         ctx.stroke();
 
-        const triHalfWidth = 5 * dpr;
+        const triHalfWidth = 5;
         for (const point of this.timingPoints) {
             if (point.time < this.viewStart || point.time > this.viewEnd) continue;
             const x = this.timeToX(point.time);
@@ -1341,7 +1352,7 @@ class Editor {
         }
 
         const accentBeatMarkerHeight = h;
-        const beatMarkerHeight = Math.min(6 * dpr, h);
+        const beatMarkerHeight = Math.min(6, h);
         for (const section of this.getSections()) {
             if (section.endTime < this.viewStart || section.startTime > this.viewEnd) continue;
             for (const { i, t } of this.beatsInSection(section)) {
@@ -1350,7 +1361,7 @@ class Editor {
                 const x = this.timeToX(t);
                 ctx.fillStyle = isHovered ? this.timingPointColor : this.pointColor;
                 const height = i % section.point.timeSignature[0] === 0 ? accentBeatMarkerHeight : beatMarkerHeight;
-                ctx.fillRect(x - 1.5 * dpr, h - height, 3 * dpr, height);
+                ctx.fillRect(x - 1.5, h - height, 3, height);
             }
         }
 

@@ -249,7 +249,7 @@ class WaveformAudio {
             startTime = 0,
             endTime = this.duration,
             channel = "mix",
-            color = "#3b82f6",
+            color = "rgb(50, 150, 150)",
             backgroundColor = null,
             amplitudeScale = 1,
             normalize = true,
@@ -298,13 +298,12 @@ class WaveformAudio {
         const sampleSpan = Math.max(1, endSample - startSample);
         const samplesPerPixel = sampleSpan / width;
 
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-        ctx.lineWidth = lineWidth;
-        ctx.beginPath();
-
         // use fast cache when zoomed out enough
         const usePeaks = samplesPerPixel >= this._peaks.step;
+
+        const topY = new Float32Array(width);
+        const botY = new Float32Array(width);
+        const valid = new Uint8Array(width);
 
         if (usePeaks) {
             const { min: minArr, max: maxArr } =
@@ -326,10 +325,9 @@ class WaveformAudio {
                     if (maxArr[i] > mx) mx = maxArr[i];
                 }
 
-                const yTop = midY - mx * halfHeight;
-                const yBottom = midY - mn * halfHeight;
-                ctx.moveTo(x + px, yTop);
-                ctx.lineTo(x + px, Math.max(yTop + lineWidth, yBottom));
+                topY[px] = midY - mx * halfHeight;
+                botY[px] = midY - mn * halfHeight;
+                valid[px] = 1;
             }
         } else {
             // zoomed in past cache resolution, read raw samples
@@ -350,13 +348,34 @@ class WaveformAudio {
                     if (v > mx) mx = v;
                 }
 
-                const yTop = midY - mx * halfHeight;
-                const yBottom = midY - mn * halfHeight;
-                ctx.moveTo(x + px, yTop);
-                ctx.lineTo(x + px, Math.max(yTop + lineWidth, yBottom));
+                topY[px] = midY - mx * halfHeight;
+                botY[px] = midY - mn * halfHeight;
+                valid[px] = 1;
             }
         }
 
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+
+        let px = 0;
+        while (px < width) {
+            if (!valid[px]) {
+                px++;
+                continue;
+            }
+            const runStart = px;
+            while (px < width && valid[px]) px++;
+            const runEnd = px;
+
+            ctx.moveTo(x + runStart, topY[runStart]);
+            for (let i = runStart + 1; i < runEnd; i++) ctx.lineTo(x + i, topY[i]);
+            for (let i = runEnd - 1; i >= runStart; i--) ctx.lineTo(x + i, botY[i]);
+            ctx.closePath();
+        }
+
+        ctx.fill();
         ctx.stroke();
         ctx.restore();
     }
