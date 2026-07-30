@@ -23,23 +23,21 @@ class Editor {
         this.pointHighlightColor = options.pointHighlightColor || "yellow";
         this.misalignedPointColor = options.misalignedPointColor || "red";
 
-        this.timestampElement = options.timestampElement || null;
-        this.playPauseElement = options.playPauseElement || null;
-        this.exportElement = options.exportElement || null;
-        this.followPlayheadElement = options.followPlayheadElement || null;
-        this.metronomeVolumeElement = options.metronomeVolumeElement || null;
-        this.undoElement = options.undoElement || null;
-        this.redoElement = options.redoElement || null;
+        this.timestampElement = options.timestampElement;
+        this.playPauseElement = options.playPauseElement;
+        this.exportElement = options.exportElement;
+        this.followPlayheadElement = options.followPlayheadElement;
+        this.metronomeVolumeElement = options.metronomeVolumeElement;
+        this.undoElement = options.undoElement;
+        this.redoElement = options.redoElement;
 
-        this.sectionBpmElement = options.sectionBpmElement || null;
-        this.sectionTimeSignatureNumeratorElement = options.sectionTimeSignatureNumeratorElement || null;
-        this.sectionTimeSignatureDenominatorElement = options.sectionTimeSignatureDenominatorElement || null;
-        this.sectionBeatCountElement = options.sectionBeatCountElement || null;
+        this.sectionBpmElement = options.sectionBpmElement;
+        this.sectionTimeSignatureNumeratorElement = options.sectionTimeSignatureNumeratorElement;
+        this.sectionTimeSignatureDenominatorElement = options.sectionTimeSignatureDenominatorElement;
+        this.sectionBeatCountElement = options.sectionBeatCountElement;
         this.currentSectionPointId = null;
 
-        this.followPlayheadEnabled = this.followPlayheadElement
-            ? !!this.followPlayheadElement.checked
-            : !!options.followPlayhead;
+        this.followPlayheadEnabled = !!this.followPlayheadElement.checked;
 
         this.mouse = null; // { x, y } in px
         this.dragPan = null; // { startClientX, startViewStart } while dragging
@@ -66,9 +64,7 @@ class Editor {
         this.metronomeGainNode.connect(this.audio.audioContext.destination);
         this.metronomeVolumeMin = options.metronomeVolumeMin ?? 0;
         this.metronomeVolumeMax = options.metronomeVolumeMax ?? 6; // 600%
-        this.metronomeVolume = this.metronomeVolumeElement
-            ? Number(this.metronomeVolumeElement.value)
-            : options.metronomeVolume ?? (this.metronomeVolumeMin + this.metronomeVolumeMax) / 2;
+        this.metronomeVolume = Number(this.metronomeVolumeElement.value);
         this.loadMetronomeSounds();
 
         this.createTimingOverlayElements();
@@ -185,7 +181,7 @@ class Editor {
         this.editingPointId = null;
         this.selectedPointId = null;
         this.hoveredBeat = null; // { pointId, index }
-        this.pointDrag = null; // { pointId }
+        this.pointDrag = null; // { pointId, snapshotTaken }
 
         this.undoStack = [];
         this.redoStack = [];
@@ -273,7 +269,7 @@ class Editor {
     disableFollowPlayhead() {
         if (!this.followPlayheadEnabled) return;
         this.followPlayheadEnabled = false;
-        if (this.followPlayheadElement) this.followPlayheadElement.checked = false;
+        this.followPlayheadElement.checked = false;
     }
 
     scrollToTime(t, { align = "center" } = {}) {
@@ -371,6 +367,7 @@ class Editor {
         });
         this.timingPoints.push(point);
         this.sortTimingPoints();
+        this.refreshSectionInputs();
         return point;
     }
 
@@ -387,8 +384,7 @@ class Editor {
 
         if (prev) {
             if (next) {
-                prev.beatCount = Math.max(0, prev.beatCount + deletedPoint.beatCount);
-                prev.bpm = Math.max(1, (prev.bpm + deletedPoint.bpm) / 2);
+                this.setSectionBeatCount(prev, next.time - prev.time, prev.beatCount + deletedPoint.beatCount);
             } else {
                 const newDuration = Math.max(0, this.audio.duration - prev.time);
                 this.setSectionBpm(prev, newDuration, prev.bpm);
@@ -399,16 +395,25 @@ class Editor {
         if (this.editingPointId === id) this.closeEditPosition();
         if (this.selectedPointId === id) this.selectedPointId = null;
         if (this.hoveredPointId === id) this.hoveredPointId = null;
+        this.refreshSectionInputs();
     }
 
     setSectionBpm(point, duration, bpm) {
         point.bpm = Math.max(1, bpm);
         point.beatCount = Math.max(0, Math.round((point.bpm * duration) / 60));
+        if (point.id === this.currentSectionPointId) {
+            this.sectionBpmElement.value = Math.round(point.bpm * 10000) / 10000;
+            this.sectionBeatCountElement.value = String(point.beatCount);
+        }
     }
 
     setSectionBeatCount(point, duration, beatCount) {
-        point.beatCount = Math.max(0, Math.min(512, Math.round(beatCount)));
+        point.beatCount = Math.max(0, Math.round(beatCount));
         point.bpm = duration > 0 ? Math.max(1, (point.beatCount * 60) / duration) : point.bpm;
+        if (point.id === this.currentSectionPointId) {
+            this.sectionBpmElement.value = Math.round(point.bpm * 10000) / 10000;
+            this.sectionBeatCountElement.value = String(point.beatCount);
+        }
     }
 
     splitSectionAtBeat(section, k) {
@@ -430,6 +435,7 @@ class Editor {
         point.beatCount = leftBeatCount;
         this.timingPoints.push(newPoint);
         this.sortTimingPoints();
+        this.refreshSectionInputs();
         return newPoint;
     }
 
@@ -454,6 +460,7 @@ class Editor {
         point.beatCount = leftBeatCount;
         this.timingPoints.push(newPoint);
         this.sortTimingPoints();
+        this.refreshSectionInputs();
         return newPoint;
     }
 
@@ -493,6 +500,7 @@ class Editor {
         this.redoStack.push(this.snapshotTimingState());
         this.restoreTimingState(this.undoStack.pop());
         this.updateUndoRedoButtons();
+        this.refreshSectionInputs();
     }
 
     redo() {
@@ -500,15 +508,16 @@ class Editor {
         this.undoStack.push(this.snapshotTimingState());
         this.restoreTimingState(this.redoStack.pop());
         this.updateUndoRedoButtons();
+        this.refreshSectionInputs();
     }
 
     updateUndoRedoButtons() {
-        if (this.undoElement) this.undoElement.disabled = this.undoStack.length === 0;
-        if (this.redoElement) this.redoElement.disabled = this.redoStack.length === 0;
+        this.undoElement.disabled = this.undoStack.length === 0;
+        this.redoElement.disabled = this.redoStack.length === 0;
     }
 
     updateExportButton() {
-        if (this.exportElement) this.exportElement.disabled = !this.audio.isLoaded;
+        this.exportElement.disabled = !this.audio.isLoaded;
     }
 
     updateCanvasInteractivity() {
@@ -753,15 +762,10 @@ class Editor {
         );
     }
 
-    updateSectionInputs(currentTime) {
-        const anyElement =
-            this.sectionBpmElement ||
-            this.sectionTimeSignatureNumeratorElement ||
-            this.sectionTimeSignatureDenominatorElement ||
-            this.sectionBeatCountElement;
-        if (!anyElement) return;
+    refreshSectionInputs() {
         if (this.isSectionInputFocused()) return;
 
+        const currentTime = this.audio.isLoaded ? this.audio.getCurrentTime() : 0;
         const section = this.isReady ? this.currentSection(currentTime) : null;
         this.currentSectionPointId = section ? section.point.id : null;
 
@@ -772,7 +776,6 @@ class Editor {
             [this.sectionBeatCountElement, section ? String(section.point.beatCount) : ""],
         ];
         for (const [el, value] of fields) {
-            if (!el) continue;
             el.disabled = !section;
             el.value = value;
         }
@@ -792,8 +795,10 @@ class Editor {
         else if (field === "beatCount") this.setSectionBeatCount(section.point, duration, value);
         else if (field === "timeSignatureNumerator") {
             section.point.timeSignature = [Math.max(1, Math.round(value)), section.point.timeSignature[1]];
+            this.refreshSectionInputs();
         } else if (field === "timeSignatureDenominator") {
             section.point.timeSignature = [section.point.timeSignature[0], Math.max(1, Math.round(value))];
+            this.refreshSectionInputs();
         }
     }
 
@@ -872,7 +877,6 @@ class Editor {
 
     // adds a listener on target and returns an unbind function
     on(target, event, handler, options) {
-        if (!target) return () => {};
         target.addEventListener(event, handler, options);
         return () => target.removeEventListener(event, handler, options);
     }
@@ -958,9 +962,8 @@ class Editor {
             // points are grabbable from anywhere along its line
             const pointHit = blocked ? null : this.hitTestPointHandle(e.clientX, e.clientY);
             if (pointHit) {
-                this.pushUndoSnapshot();
                 this.selectedPointId = pointHit.id;
-                this.pointDrag = { pointId: pointHit.id };
+                this.pointDrag = { pointId: pointHit.id, snapshotTaken: false };
                 this.canvas.style.cursor = "ew-resize";
                 return;
             }
@@ -971,7 +974,7 @@ class Editor {
                     this.pushUndoSnapshot();
                     const newPoint = this.splitSectionAtBeat(beatHit.section, beatHit.index);
                     this.selectedPointId = newPoint.id;
-                    this.pointDrag = { pointId: newPoint.id };
+                    this.pointDrag = { pointId: newPoint.id, snapshotTaken: true };
                     this.canvas.style.cursor = "ew-resize";
                     return;
                 }
@@ -980,7 +983,7 @@ class Editor {
                 const newPoint = this.addTimingPoint(this.clientXToTime(e.clientX));
                 if (newPoint) {
                     this.selectedPointId = newPoint.id;
-                    this.pointDrag = { pointId: newPoint.id };
+                    this.pointDrag = { pointId: newPoint.id, snapshotTaken: true };
                     this.canvas.style.cursor = "ew-resize";
                     this.updatePointDrag(e.clientX);
                 }
@@ -1060,7 +1063,14 @@ class Editor {
         const upperBound = next ? next.time - epsilon : this.audio.duration;
 
         const proposedTime = this.clientXToTime(clientX);
-        point.time = Math.max(lowerBound, Math.min(upperBound, proposedTime));
+        const newTime = Math.max(lowerBound, Math.min(upperBound, proposedTime));
+        if (newTime === point.time) return;
+
+        if (!this.pointDrag.snapshotTaken) {
+            this.pushUndoSnapshot();
+            this.pointDrag.snapshotTaken = true;
+        }
+        point.time = newTime;
 
         const sections = this.getSections();
         const endingHere = prev ? sections.find((s) => s.point.id === prev.id) : null;
@@ -1154,12 +1164,10 @@ class Editor {
     }
 
     updatePlayPauseButton() {
-        if (!this.playPauseElement) return;
         this.setElementText(this.playPauseElement, this.audio.isPlaying ? "⏸" : "▶");
     }
 
     setElementText(el, text) {
-        if (!el) return;
         const tag = el.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA") el.value = text;
         else el.textContent = text;
@@ -1175,7 +1183,6 @@ class Editor {
     }
 
     updateTimestamp(currentTime = null) {
-        if (!this.timestampElement) return;
         if (document.activeElement === this.timestampElement) return;
         const t = currentTime !== null ? currentTime : (this.audio.isLoaded ? this.audio.getCurrentTime() : 0);
         this.setElementText(this.timestampElement, this.formatTimestamp(t));
@@ -1228,7 +1235,11 @@ class Editor {
 
         this.updateTimestamp(currentTime);
         this.updatePlayPauseButton();
-        this.updateSectionInputs(currentTime);
+
+        const trackedSection = this.isReady ? this.currentSection(currentTime) : null;
+        if ((trackedSection ? trackedSection.point.id : null) !== this.currentSectionPointId) {
+            this.refreshSectionInputs();
+        }
 
         if (this.isReady) {
             if (this.followPlayheadEnabled && this.audio.isPlaying) {
